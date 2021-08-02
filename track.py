@@ -134,7 +134,7 @@ def detect(opt):
 
                 # pass detections to deepsort
                 outputs = deepsort.update(xywhs.cpu(), confs.cpu(), clss, im0)
-                
+
                 # draw boxes for visualization
                 if len(outputs) > 0:
                     for j, (output, conf) in enumerate(zip(outputs, confs)): 
@@ -162,8 +162,9 @@ def detect(opt):
             else:
                 deepsort.increment_ages()
 
+            t3 = time_synchronized()
             # Print time (inference + NMS)
-            print('%sDone. (%.3fs)' % (s, t2 - t1))
+            print('%sDone. inference:(%.3fs) postprocess:(%.3fs)' % (s, t2 - t1, t3-t2))
 
             # Stream results
             if show_vid:

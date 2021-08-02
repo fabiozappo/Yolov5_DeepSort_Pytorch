@@ -1,7 +1,10 @@
+import time
+
 import numpy as np
 import torch
 
 from .deep.feature_extractor import Extractor
+from .deep_zappa.feature_extractor import Extractor
 from .sort.nn_matching import NearestNeighborDistanceMetric
 from .sort.detection import Detection
 from .sort.tracker import Tracker
@@ -26,18 +29,22 @@ class DeepSort(object):
     def update(self, bbox_xywh, confidences, classes, ori_img):
         self.height, self.width = ori_img.shape[:2]
         # generate detections
+        t0 = time.time()
         features = self._get_features(bbox_xywh, ori_img)
         bbox_tlwh = self._xywh_to_tlwh(bbox_xywh)
         detections = [Detection(bbox_tlwh[i], conf, features[i]) for i, conf in enumerate(
             confidences) if conf > self.min_confidence]
+        t1 = time.time()
 
         # run on non-maximum supression
-        boxes = np.array([d.tlwh for d in detections])
-        scores = np.array([d.confidence for d in detections])
+        # boxes = np.array([d.tlwh for d in detections])
+        # scores = np.array([d.confidence for d in detections])
 
         # update tracker
         self.tracker.predict()
         self.tracker.update(detections, classes)
+
+        t2 = time.time()
 
         # output bbox identities
         outputs = []
@@ -51,6 +58,10 @@ class DeepSort(object):
             outputs.append(np.array([x1, y1, x2, y2, track_id, class_id], dtype=np.int))
         if len(outputs) > 0:
             outputs = np.stack(outputs, axis=0)
+
+        t3 = time.time()
+
+        # print(f'Feature Extraction: {t1-t0:.3f}, Updating: {t2-t1:.3f}, Identification: {t3-t2:.3f}')
         return outputs
 
     """
