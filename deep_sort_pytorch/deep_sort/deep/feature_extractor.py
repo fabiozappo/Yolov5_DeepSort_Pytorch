@@ -10,12 +10,12 @@ import logging # todo: a che serve?
 
 from torch2trt import torch2trt
 
-from .models import res_net50, mob_net, squeeze_net, res_net18
+from .models import select_model #res_net50, mob_net, squeeze_net, res_net18
 
 tested_models = ('ResNet50', 'ResNet18', 'SqueezeNet', 'MobileNet', 'Deep')
 
 # todo: duplicata
-def select_model(model_name, class_num=751, droprate=0.5, circle=False, num_bottleneck=512):
+def select_model1(model_name, class_num=751, droprate=0.5, circle=False, num_bottleneck=512):
 
     assert model_name in tested_models, f'model_name must be one of the following: {tested_models}, found {model_name}'
     if model_name == 'ResNet50':
@@ -38,34 +38,45 @@ class Extractor(object):
         self.person_width = 64
         self.person_heigth = 128
 
-        # load the training config
-        config_path = '/'.join(model_path.split('/')[:-1]) + '/opts.yaml'
-        with open(config_path, 'r') as stream:
-            config = yaml.safe_load(stream)
-        num_bottleneck, model_name = config['num_bottleneck'], config['name']
+        # TUTTA ROBA DUPLICATA
+        #########################################
+        ld = torch.load(model_path)
+        state_dict, num_bottleneck, img_height, img_width, model_name, engine_type = \
+            ld['state_dict'], ld['num_bottleneck'], ld['img_height'], ld['img_width'], ld['model_name'], ld[
+                'engine_type']
 
-        # load network and weights, then remove classifier to perform feature extraction
-        net = select_model(model_name, num_bottleneck=num_bottleneck)
-        net.load_state_dict(torch.load(model_path, map_location=torch.device(self.device)))
-        net.classifier.classifier = nn.Sequential()
+        if engine_type == 'pytorch':
+            model = select_model(model_name, num_bottleneck=num_bottleneck)
+            model.load_state_dict(state_dict)
+
+            # Remove the final fc layer and classifier layer
+            model.classifier.classifier = nn.Sequential()
+            model = model.cuda().half()
+
+        elif engine_type == 'tensorrt':
+            from torch2trt import TRTModule
+
+            if max_batchsize > ld['max_batchsize']:
+                print('Reducing batch size to tensorrt_engine.max_batch')
+                batchsize = ld['max_batchsize']
+
+            model = TRTModule()
+            model.load_state_dict(state_dict)
+
+        model = model.eval()
+        #########################################
 
         logger = logging.getLogger("root.tracker") # todo: a che serve?
         logger.info("Loading weights from {}... Done!".format(model_path)) # todo: a che serve?
 
-        # Inference mode
-        net = net.eval().to(self.device)
-
-        if use_fp16:
-            net = net.half()
-
         # todo: fa crashare il programma su immagini senza detection
-        if use_trt:
-            x = torch.FloatTensor(1, 3, self.person_heigth, self.person_width).to(self.device)
-            x = x.half() if use_fp16 else x
-            print('Generating tensorrt engine...')
-            net = torch2trt(net, [x], fp16_mode=use_fp16, max_batch_size=max_batchsize)
+        # if use_trt:
+        #     x = torch.FloatTensor(1, 3, self.person_heigth, self.person_width).to(self.device)
+        #     x = x.half() if use_fp16 else x
+        #     print('Generating tensorrt engine...')
+        #     net = torch2trt(net, [x], fp16_mode=use_fp16, max_batch_size=max_batchsize)
 
-        self.net = net
+        self.net = model
         self.norm = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])

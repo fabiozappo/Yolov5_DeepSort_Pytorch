@@ -103,6 +103,8 @@ if __name__ == '__main__':
         model = TRTModule()
         model.load_state_dict(state_dict)
 
+    model = model.eval()
+
     # data transformers
     data_transforms = transforms.Compose([
         transforms.Resize((img_height, img_width)),  # default interpolation is bilinear
