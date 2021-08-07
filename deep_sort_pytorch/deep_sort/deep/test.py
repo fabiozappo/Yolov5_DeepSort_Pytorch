@@ -4,13 +4,12 @@ from __future__ import print_function, division
 import argparse
 import torch
 import torch.nn as nn
-import torch.backends.cudnn as cudnn
 import torchvision
 from torchvision import datasets, models, transforms
 import os
 import scipy.io
 import yaml
-from models import select_model
+from models import load_model_for_inference
 from tqdm import tqdm
 
 
@@ -67,7 +66,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Test')
     parser.add_argument('--model_path', type=str, help='trained pytorch or trt weight.pth')
     parser.add_argument('--data_dir', default='../Market/pytorch', type=str, help='./test_data')
-    parser.add_argument('--batchsize', default=128, type=int, help='batchsize')
+    parser.add_argument('--batchsize', default=64, type=int, help='batchsize')
     parser.add_argument('--multi', action='store_true', help='use multiple query')
     parser.add_argument('--augment', action='store_true',
                         help='use horizontal flips and different scales in inference.')
@@ -79,31 +78,8 @@ if __name__ == '__main__':
 
     device = 'cuda' # if torch.cuda.is_available() else 'cpu'
 
-    ld = torch.load(model_path)
-    state_dict, num_bottleneck, img_height, img_width, model_name, engine_type = \
-        ld['state_dict'], ld['num_bottleneck'], ld['img_height'], ld['img_width'], ld['model_name'], ld['engine_type']
-
-    if engine_type == 'pytorch':
-        model = select_model(model_name, num_bottleneck=num_bottleneck)
-        model.load_state_dict(state_dict)
-
-        # Remove the final fc layer and classifier layer
-        model.classifier.classifier = nn.Sequential()
-        model = model.to(device).half()
-
-        cudnn.benchmark = True
-
-    elif engine_type == 'tensorrt':
-        from torch2trt import TRTModule
-
-        if batchsize > ld['max_batchsize']:
-            print('Reducing batch size to tensorrt_engine.max_batch')
-            batchsize = ld['max_batchsize']
-
-        model = TRTModule()
-        model.load_state_dict(state_dict)
-
-    model = model.eval()
+    # load model and training config
+    model, num_bottleneck, img_height, img_width, model_name = load_model_for_inference(model_path=model_path)
 
     # data transformers
     data_transforms = transforms.Compose([

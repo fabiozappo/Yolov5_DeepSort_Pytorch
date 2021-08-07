@@ -10,41 +10,21 @@ import logging # todo: a che serve?
 
 from torch2trt import torch2trt
 
-from .models import select_model
+from .models import load_model_for_inference
 
 
 class Extractor(object):
     def __init__(self, model_path):
 
-        self.device = "cuda"
 
-        # TUTTA ROBA DUPLICATA
-        #########################################
-        ld = torch.load(model_path)
-        state_dict, num_bottleneck, img_height, img_width, model_name, engine_type = \
-            ld['state_dict'], ld['num_bottleneck'], ld['img_height'], ld['img_width'], ld['model_name'], ld['engine_type']
 
-        if engine_type == 'pytorch':
-            model = select_model(model_name, num_bottleneck=num_bottleneck)
-            model.load_state_dict(state_dict)
-
-            # Remove the final fc layer and classifier layer
-            model.classifier.classifier = nn.Sequential()
-            model = model.cuda().half()
-
-        elif engine_type == 'tensorrt':
-            from torch2trt import TRTModule
-
-            print('Loading deep trt feature extractor...')
-            model = TRTModule()
-            model.load_state_dict(state_dict)
-
-        model = model.eval()
-        #########################################
+        # load model and training config
+        model, _, img_height, img_width, _ = load_model_for_inference(model_path=model_path)
 
         logger = logging.getLogger("root.tracker") # todo: a che serve?
         logger.info("Loading weights from {}... Done!".format(model_path)) # todo: a che serve?
 
+        self.device = "cuda"
         self.person_width = img_width
         self.person_heigth = img_height
         self.net = model

@@ -5,6 +5,31 @@ from torchvision import models
 from torch.autograd import Variable
 import torch.nn.functional as F
 
+
+def load_model_for_inference(model_path):
+    ld = torch.load(model_path)
+    state_dict, num_bottleneck, img_height, img_width, model_name, engine_type = \
+        ld['state_dict'], ld['num_bottleneck'], ld['img_height'], ld['img_width'], ld['model_name'], ld['engine_type']
+
+    if engine_type == 'pytorch':
+        model = select_model(model_name, num_bottleneck=num_bottleneck)
+        model.load_state_dict(state_dict)
+
+        # Remove the final fc layer and classifier layer
+        model.classifier.classifier = nn.Sequential()
+        model = model.cuda().half()
+
+    elif engine_type == 'tensorrt':
+        from torch2trt import TRTModule
+
+        print('Loading deep trt feature extractor...')
+        model = TRTModule()
+        model.load_state_dict(state_dict)
+
+    model = model.eval()
+    return model, num_bottleneck, img_height, img_width, model_name
+
+
 def select_model(model_name, class_num=751, droprate=0.5, circle=False, num_bottleneck=512):
     tested_models = ('ResNet50', 'ResNet18', 'SqueezeNet', 'MobileNet', 'Deep')
 

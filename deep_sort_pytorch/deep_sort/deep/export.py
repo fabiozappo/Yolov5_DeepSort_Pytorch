@@ -5,7 +5,7 @@ from torch2trt import torch2trt
 import torch
 import torch.nn as nn
 
-from models import select_model
+from models import load_model_for_inference
 
 
 if __name__ == '__main__':
@@ -18,23 +18,8 @@ if __name__ == '__main__':
 
     model_path, max_batchsize = opt.model_path, opt.max_batchsize
 
-    assert model_path.endswith('.pth') and os.path.exists(model_path), 'argument --model_path is not a valid argument'
-
-    # load the training config
-    loaded_dict = torch.load(model_path, map_location='cpu')
-    state_dict = loaded_dict['state_dict']
-    num_bottleneck = loaded_dict['num_bottleneck']
-    img_height = loaded_dict['img_height']
-    img_width = loaded_dict['img_width']
-    model_name = loaded_dict['model_name']
-
-    # load network and weights, then remove classifier to perform feature extraction
-    model = select_model(model_name, num_bottleneck=num_bottleneck)
-    model.load_state_dict(state_dict)
-    model.classifier.classifier = nn.Sequential()
-
-    # eval to cuda to fp16
-    model = model.eval().cuda().half()
+    # load model and training config
+    model, num_bottleneck, img_height, img_width, model_name = load_model_for_inference(model_path=model_path)
 
     # create example data
     x = torch.ones((1, 3, img_height, img_width)).cuda().half()
