@@ -3,8 +3,8 @@ import time
 import numpy as np
 import torch
 
+# from .deep.feature_extractor import Extractor
 from .deep.feature_extractor import Extractor
-from .deep_zappa.feature_extractor import Extractor
 from .sort.nn_matching import NearestNeighborDistanceMetric
 from .sort.detection import Detection
 from .sort.tracker import Tracker
@@ -14,11 +14,13 @@ __all__ = ['DeepSort']
 
 
 class DeepSort(object):
-    def __init__(self, model_path, max_dist=0.2, min_confidence=0.3, nms_max_overlap=1.0, max_iou_distance=0.7, max_age=70, n_init=3, nn_budget=100, use_cuda=True):
+    def __init__(self, model_path, max_dist=0.2, min_confidence=0.3, nms_max_overlap=1.0, max_iou_distance=0.7,
+                 max_age=70, n_init=3, nn_budget=100, use_cuda=True, use_trt=True, use_fp16=True, max_batchsize=64):
+
         self.min_confidence = min_confidence
         self.nms_max_overlap = nms_max_overlap
 
-        self.extractor = Extractor(model_path, use_cuda=use_cuda)
+        self.extractor = Extractor(model_path, use_cuda=use_cuda, use_trt=use_trt, use_fp16=use_fp16, max_batchsize=max_batchsize)
 
         max_cosine_distance = max_dist
         metric = NearestNeighborDistanceMetric(
@@ -33,8 +35,9 @@ class DeepSort(object):
         features = self._get_features(bbox_xywh, ori_img)
         bbox_tlwh = self._xywh_to_tlwh(bbox_xywh)
         detections = [Detection(bbox_tlwh[i], conf, features[i]) for i, conf in enumerate(
-            confidences) if conf > self.min_confidence]
+            confidences) if conf > self.min_confidence] # todo: maybe try to think how to remove this redundant for loop
         t1 = time.time()
+        print(f'get_features: {t1-t0:.3f}', end=' ')
 
         # run on non-maximum supression
         # boxes = np.array([d.tlwh for d in detections])
@@ -42,9 +45,13 @@ class DeepSort(object):
 
         # update tracker
         self.tracker.predict()
-        self.tracker.update(detections, classes)
+        t15 = time.time()
+        print(f'predict: {t15 - t1:.3f}', end=' ')
+
+        self.tracker.update(detections, classes) # todo: resolve bottleneck
 
         t2 = time.time()
+        print(f'update: {t2 - t15:.3f}', end=' ')
 
         # output bbox identities
         outputs = []

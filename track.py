@@ -40,12 +40,21 @@ def detect(opt):
     # initialize deepsort
     cfg = get_config()
     cfg.merge_from_file(opt.config_deepsort)
-    attempt_download(deep_sort_weights, repo='mikel-brostrom/Yolov5_DeepSort_Pytorch')
-    deepsort = DeepSort(cfg.DEEPSORT.REID_CKPT,
-                        max_dist=cfg.DEEPSORT.MAX_DIST, min_confidence=cfg.DEEPSORT.MIN_CONFIDENCE,
-                        nms_max_overlap=cfg.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,
-                        max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
-                        use_cuda=True)
+    # attempt_download(deep_sort_weights, repo='mikel-brostrom/Yolov5_DeepSort_Pytorch')
+
+    deepsort = DeepSort(deep_sort_weights,
+                            max_dist=cfg.DEEPSORT.MAX_DIST, min_confidence=cfg.DEEPSORT.MIN_CONFIDENCE,
+                            nms_max_overlap=cfg.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,
+                            max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
+                            use_cuda=True, use_trt=True, use_fp16=False, max_batchsize=256)
+    # todo: per qualche motivo il flag use_trt=True fa crashare il tutto nel caso di immagini vuote... anche commentando gli usi di deepsort
+    # torch.save(deepsort.extractor.net.state_dict(), './mobilenet_trt.pth')
+    # quit()
+
+    from torch2trt import TRTModule
+    model_trt = TRTModule()
+    model_trt.load_state_dict(torch.load('./mobilenet_trt.pth'))
+    deepsort.extractor.net = model_trt
 
     # Initialize
     device = select_device(opt.device)
@@ -92,6 +101,9 @@ def detect(opt):
     txt_file_name = source.split('/')[-1].split('.')[0]
     txt_path = str(Path(out)) + '/' + txt_file_name + '.txt'
 
+    print(model)
+    print(deepsort.extractor.net)
+
     for frame_idx, (path, img, im0s, vid_cap) in enumerate(dataset):
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
@@ -102,6 +114,7 @@ def detect(opt):
         # Inference
         t1 = time_synchronized()
         pred = model(img, augment=opt.augment)[0]
+
 
         # Apply NMS
         pred = non_max_suppression(
@@ -160,11 +173,14 @@ def detect(opt):
                                                            bbox_left, bbox_w, bbox_h, -1, -1, -1, -1))  # label format
 
             else:
+                pass
                 deepsort.increment_ages()
 
             t3 = time_synchronized()
             # Print time (inference + NMS)
-            print('%sDone. inference:(%.3fs) postprocess:(%.3fs)' % (s, t2 - t1, t3-t2))
+            # print('%sDone. inference:(%.3fs) postprocess:(%.3fs)' % (s, t2 - t1, t3-t2))
+            print('%sDone.' % (s))
+
 
             # Stream results
             if show_vid:
@@ -200,7 +216,7 @@ def detect(opt):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--yolo_weights', type=str, default='yolov5/weights/yolov5s.pt', help='model.pt path')
-    parser.add_argument('--deep_sort_weights', type=str, default='deep_sort_pytorch/deep_sort/deep/checkpoint/ckpt.t7', help='ckpt.t7 path')
+    parser.add_argument('--deep_sort_weights', type=str, default='deep_sort_pytorch/deep_sort/deep/model/MobileNet/net_19.pth', help='pretrainer reid net')
     # file/folder, 0 for webcam
     parser.add_argument('--source', type=str, default='0', help='source')
     parser.add_argument('--output', type=str, default='inference/output', help='output folder')  # output folder
@@ -223,3 +239,6 @@ if __name__ == '__main__':
 
     with torch.no_grad():
         detect(args)
+
+
+#python3 track.py --yolo yolov5/weights/crowdhuman_yolov5m.pt --source rozzano_vid.mp4
