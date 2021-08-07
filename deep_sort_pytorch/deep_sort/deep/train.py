@@ -26,8 +26,6 @@ from circle_loss import CircleLoss, convert_label_to_similarity
 # TODO: fare un benchmark di velocità e performance (sul MOT Dataset) di deepsort usando deep vs non usando deep
 
 
-
-
 def draw_curve(current_epoch):
     x_epoch.append(current_epoch)
     ax0.plot(x_epoch, y_loss['train'], 'bo-', label='train')
@@ -163,7 +161,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 
     # load best model weights
     model.load_state_dict(last_model_wts)
-    save_network(model, 'last')
+    save_network(model, 'last', num_bottleneck=num_bottleneck, img_height=img_height, img_width=img_width, model_name=name)
     return model
 
 
