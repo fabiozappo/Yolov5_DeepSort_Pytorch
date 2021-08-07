@@ -1,12 +1,10 @@
 import argparse
 import os
-import yaml
 
 from torch2trt import torch2trt
 import torch
 import torch.nn as nn
 
-# from feature_extractor import select_model
 from models import select_model
 
 
@@ -54,6 +52,7 @@ if __name__ == '__main__':
         'img_width': img_width,
         'model_name': model_name,
         'max_batchsize': max_batchsize,
+        'engine_type': 'tensorrt',
     }
 
     torch.save(to_save_dict, new_filename)

@@ -10,17 +10,8 @@ from torchvision import datasets, models, transforms
 import os
 import scipy.io
 import yaml
-from models import res_net50, mob_net, squeeze_net, res_net18
-from apex.fp16_utils import *
+from models import select_model
 from tqdm import tqdm
-from train import select_model
-from torch2trt import torch2trt
-
-
-def load_network(network):
-    save_path = os.path.join('./model', name, 'net_%s.pth' % opt.which_epoch)
-    network.load_state_dict(torch.load(save_path))
-    return network
 
 
 def extract_feature(model, dataloaders, ft_dim, scales=(1, 1.1)):
@@ -30,12 +21,8 @@ def extract_feature(model, dataloaders, ft_dim, scales=(1, 1.1)):
         img, label = data
         n, c, h, w = img.size()
 
-        ff = torch.FloatTensor(n, ft_dim).zero_().to(device)
-        img = img.to(device)
-
-        if opt.half:
-            ff = ff.half()
-            img = img.half()
+        ff = torch.FloatTensor(n, ft_dim).zero_().to(device).half()
+        img = img.to(device).half()
 
         if opt.augment:
             for i in range(2):
@@ -75,55 +62,64 @@ def get_id(img_path):
     return camera_id, labels
 
 
-
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Test')
-    parser.add_argument('--which_epoch', default='last', type=str, help='0,1,2,3...or last')
-    parser.add_argument('--test_dir', default='../Market/pytorch', type=str, help='./test_data')
-    parser.add_argument('--name', default='MobileNet', type=str, help='save model path')
+    parser.add_argument('--model_path', type=str, help='trained pytorch or trt weight.pth')
+    parser.add_argument('--data_dir', default='../Market/pytorch', type=str, help='./test_data')
     parser.add_argument('--batchsize', default=128, type=int, help='batchsize')
-    parser.add_argument('--nclasses', default=751, type=int, help='number of classes')
     parser.add_argument('--multi', action='store_true', help='use multiple query')
-    parser.add_argument('--half', action='store_true', help='use fp16.')
-    parser.add_argument('--augment', action='store_true', help='use horizontal flips and different scales in inference.')
+    parser.add_argument('--augment', action='store_true',
+                        help='use horizontal flips and different scales in inference.')
     parser.add_argument('--trt', action='store_true', help='use trt instead of pytorch inference.')
     opt = parser.parse_args()
     print(opt)
 
+    model_path, data_dir, batchsize = opt.model_path, opt.data_dir, opt.batchsize
 
-    # load the training config
-    config_path = os.path.join('./model', opt.name, 'opts.yaml')
-    with open(config_path, 'r') as stream:
-        config = yaml.safe_load(stream)
+    device = 'cuda' # if torch.cuda.is_available() else 'cpu'
 
-    # which_epoch = opt.which_epoch
-    name = opt.name
-    test_dir = opt.test_dir
-    num_bottleneck = config['num_bottleneck']
+    ld = torch.load(model_path)
+    state_dict, num_bottleneck, img_height, img_width, model_name, engine_type = \
+        ld['state_dict'], ld['num_bottleneck'], ld['img_height'], ld['img_width'], ld['model_name'], ld['engine_type']
 
-    # set gpu ids
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    if device == 'cuda':
+    if engine_type == 'pytorch':
+        model = select_model(model_name, num_bottleneck=num_bottleneck)
+        model.load_state_dict(state_dict)
+
+        # Remove the final fc layer and classifier layer
+        model.classifier.classifier = nn.Sequential()
+        model = model.to(device).half()
+
         cudnn.benchmark = True
 
+    elif engine_type == 'tensorrt':
+        from torch2trt import TRTModule
+
+        if batchsize > ld['max_batchsize']:
+            print('Reducing batch size to tensorrt_engine.max_batch')
+            batchsize = ld['max_batchsize']
+
+        model = TRTModule()
+        model.load_state_dict(state_dict)
+
+    # data transformers
     data_transforms = transforms.Compose([
-        transforms.Resize((128, 64)), # default interpolation is bilinear
+        transforms.Resize((img_height, img_width)),  # default interpolation is bilinear
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
-    data_dir = test_dir
-
     if opt.multi:
         image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x), data_transforms) for x in
                           ['gallery', 'query', 'multi-query']}
-        dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=opt.batchsize,
+        dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batchsize,
                                                       shuffle=False, num_workers=8) for x in
                        ['gallery', 'query', 'multi-query']}
     else:
-        image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x), data_transforms) for x in ['gallery', 'query']}
-        dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=opt.batchsize,
+        image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x), data_transforms) for x in
+                          ['gallery', 'query']}
+        dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=batchsize,
                                                       shuffle=False, num_workers=8) for x in ['gallery', 'query']}
     class_names = image_datasets['query'].classes
 
@@ -137,27 +133,7 @@ if __name__ == '__main__':
         mquery_path = image_datasets['multi-query'].imgs
         mquery_cam, mquery_label = get_id(mquery_path)
 
-    ######################################################################
-    # Load Collected data Trained model
     print('-------test-----------')
-    model_structure = select_model(name, class_num=opt.nclasses, num_bottleneck=num_bottleneck)
-
-    model = load_network(model_structure)
-
-    # Remove the final fc layer and classifier layer
-    model.classifier.classifier = nn.Sequential()
-
-    # Change to test mode
-    model = model.eval().to(device)
-
-    if opt.half and device == 'cuda':
-        model = model.half()
-
-    if opt.trt:
-        # get single batch to give use it as example to create trt engine
-        x = next(iter(dataloaders['gallery']))[0].to(device).half() if opt.half else next(iter(dataloaders['gallery']))[0].to(device)
-        print('Generating tensorrt engine...')
-        model = torch2trt(model, [x], fp16_mode=opt.half, max_batch_size=opt.batchsize)
 
     # Extract feature
     with torch.no_grad():
@@ -171,8 +147,8 @@ if __name__ == '__main__':
               'query_f': query_feature.numpy(), 'query_label': query_label, 'query_cam': query_cam}
     scipy.io.savemat('pytorch_result.mat', result)
 
-    print(opt.name)
-    result = './model/%s/result.txt' % opt.name
+    print(model_name)
+    result = './model/%s/result.txt' % model_name
     os.system('python evaluate_gpu.py | tee -a %s' % result)
 
     if opt.multi:

@@ -51,6 +51,7 @@ def save_network(network, epoch_label, num_bottleneck, img_height, img_width, mo
         'img_height': img_height,
         'img_width': img_width,
         'model_name': model_name,
+        'engine_type': 'pytorch',
     }
 
     torch.save(to_save_dict, save_path)
