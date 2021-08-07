@@ -45,16 +45,7 @@ def detect(opt):
     deepsort = DeepSort(deep_sort_weights,
                             max_dist=cfg.DEEPSORT.MAX_DIST, min_confidence=cfg.DEEPSORT.MIN_CONFIDENCE,
                             nms_max_overlap=cfg.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,
-                            max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
-                            use_cuda=True, use_trt=True, use_fp16=False, max_batchsize=256)
-    # todo: per qualche motivo il flag use_trt=True fa crashare il tutto nel caso di immagini vuote... anche commentando gli usi di deepsort
-    # torch.save(deepsort.extractor.net.state_dict(), './mobilenet_trt.pth')
-    # quit()
-
-    from torch2trt import TRTModule
-    model_trt = TRTModule()
-    model_trt.load_state_dict(torch.load('./mobilenet_trt.pth'))
-    deepsort.extractor.net = model_trt
+                            max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET)
 
     # Initialize
     device = select_device(opt.device)

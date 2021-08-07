@@ -10,40 +10,19 @@ import logging # todo: a che serve?
 
 from torch2trt import torch2trt
 
-from .models import select_model #res_net50, mob_net, squeeze_net, res_net18
+from .models import select_model
 
-tested_models = ('ResNet50', 'ResNet18', 'SqueezeNet', 'MobileNet', 'Deep')
-
-# todo: duplicata
-def select_model1(model_name, class_num=751, droprate=0.5, circle=False, num_bottleneck=512):
-
-    assert model_name in tested_models, f'model_name must be one of the following: {tested_models}, found {model_name}'
-    if model_name == 'ResNet50':
-        model = res_net50(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
-    elif model_name == 'ResNet18':
-        model = res_net18(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
-    elif model_name == 'SqueezeNet':
-        model = squeeze_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
-    elif model_name == 'MobileNet':
-        model = mob_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
-    else:
-        model = deep_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
-    return model
 
 class Extractor(object):
-    def __init__(self, model_path, use_cuda=True, use_trt=True, use_fp16=True, max_batchsize=64):
+    def __init__(self, model_path):
 
-        self.device = "cuda" if torch.cuda.is_available() and use_cuda else "cpu"
-        self.use_fp16 = use_fp16
-        self.person_width = 64
-        self.person_heigth = 128
+        self.device = "cuda"
 
         # TUTTA ROBA DUPLICATA
         #########################################
         ld = torch.load(model_path)
         state_dict, num_bottleneck, img_height, img_width, model_name, engine_type = \
-            ld['state_dict'], ld['num_bottleneck'], ld['img_height'], ld['img_width'], ld['model_name'], ld[
-                'engine_type']
+            ld['state_dict'], ld['num_bottleneck'], ld['img_height'], ld['img_width'], ld['model_name'], ld['engine_type']
 
         if engine_type == 'pytorch':
             model = select_model(model_name, num_bottleneck=num_bottleneck)
@@ -56,10 +35,7 @@ class Extractor(object):
         elif engine_type == 'tensorrt':
             from torch2trt import TRTModule
 
-            if max_batchsize > ld['max_batchsize']:
-                print('Reducing batch size to tensorrt_engine.max_batch')
-                batchsize = ld['max_batchsize']
-
+            print('Loading deep trt feature extractor...')
             model = TRTModule()
             model.load_state_dict(state_dict)
 
@@ -69,13 +45,8 @@ class Extractor(object):
         logger = logging.getLogger("root.tracker") # todo: a che serve?
         logger.info("Loading weights from {}... Done!".format(model_path)) # todo: a che serve?
 
-        # todo: fa crashare il programma su immagini senza detection
-        # if use_trt:
-        #     x = torch.FloatTensor(1, 3, self.person_heigth, self.person_width).to(self.device)
-        #     x = x.half() if use_fp16 else x
-        #     print('Generating tensorrt engine...')
-        #     net = torch2trt(net, [x], fp16_mode=use_fp16, max_batch_size=max_batchsize)
-
+        self.person_width = img_width
+        self.person_heigth = img_height
         self.net = model
         self.norm = transforms.Compose([
             transforms.ToTensor(),
@@ -95,8 +66,8 @@ class Extractor(object):
         def _resize(im, size):
             return cv2.resize(im.astype(np.float32)/255., size)
 
-        im_batch = torch.cat([self.norm(_resize(im, (self.person_width, self.person_heigth))).unsqueeze(0) for im in im_crops], dim=0).float()
-        im_batch = im_batch.half() if self.use_fp16 else im_batch.float()
+        im_batch = torch.cat([self.norm(_resize(im, (self.person_width, self.person_heigth))).unsqueeze(0) for im in im_crops], dim=0)
+        im_batch = im_batch.half()
         return im_batch
 
     def __call__(self, im_crops):
