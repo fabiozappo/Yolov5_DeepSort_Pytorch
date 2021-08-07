@@ -15,7 +15,7 @@ matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import time
 import os
-from models import res_net50, res_net18, squeeze_net, mob_net, deep_net
+from models import select_model
 import yaml
 from shutil import copyfile
 from torch.cuda import amp
@@ -25,22 +25,8 @@ from circle_loss import CircleLoss, convert_label_to_similarity
 # TODO: fare alle altre reti la stessa modifica fatta a Mobilenet
 # TODO: fare un benchmark di velocità e performance (sul MOT Dataset) di deepsort usando deep vs non usando deep
 
-tested_models = ('ResNet50', 'ResNet18', 'SqueezeNet', 'MobileNet', 'Deep')
 
 
-def select_model(model_name, class_num=751, droprate=0.5, circle=False, num_bottleneck=512):
-    assert model_name in tested_models, f'model_name must be one of the following: {tested_models}, found {model_name}'
-    if model_name == 'ResNet50':
-        model = res_net50(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
-    elif model_name == 'ResNet18':
-        model = res_net18(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
-    elif model_name == 'SqueezeNet':
-        model = squeeze_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
-    elif model_name == 'MobileNet':
-        model = mob_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
-    else:
-        model = deep_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
-    return model
 
 def draw_curve(current_epoch):
     x_epoch.append(current_epoch)
@@ -54,10 +40,20 @@ def draw_curve(current_epoch):
     fig.savefig( os.path.join('./model',name,'train.jpg'))
 
 
-def save_network(network, epoch_label):
-    save_filename = 'net_%s.pth'% epoch_label
-    save_path = os.path.join('./model',name,save_filename)
-    torch.save(network.cpu().state_dict(), save_path)
+def save_network(network, epoch_label, num_bottleneck, img_height, img_width, model_name):
+    save_filename = 'net_%s.pth' % epoch_label
+    save_path = os.path.join('./model', name, save_filename)
+
+    # add
+    to_save_dict = {
+        'state_dict': network.cpu().state_dict(),
+        'num_bottleneck': num_bottleneck,
+        'img_height': img_height,
+        'img_width': img_width,
+        'model_name': model_name,
+    }
+
+    torch.save(to_save_dict, save_path)
     if torch.cuda.is_available():
         network.cuda()
 
@@ -71,6 +67,8 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
     warm_iteration = round(dataset_sizes['train'] / batchsize) * warm_epoch  # first 5 epoch
     if opt.circle:
         criterion_circle = CircleLoss(m=0.25, gamma=32)  # gamma = 64 may lead to a better result.
+
+    best_epoch_acc = 0.0
 
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -151,8 +149,9 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
             # deep copy the model
             if phase == 'val':
                 last_model_wts = model.state_dict()
-                if epoch % 10 == 9:
-                    save_network(model, epoch)
+                if epoch_acc > best_epoch_acc:
+                    save_network(model, 'best', num_bottleneck=num_bottleneck, img_height=img_height, img_width=img_width, model_name=name)
+                    best_epoch_acc = epoch_acc
                 draw_curve(epoch)
             else:
                 # scheduler
@@ -174,6 +173,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', default='../Market/pytorch', type=str, help='training dir path')
     parser.add_argument('--batchsize', default=32, type=int, help='batchsize')
     parser.add_argument('--num_bottleneck', default=512, type=int, help='dim of last fc before classification')
+    parser.add_argument('--img_width', default=64, type=int, help='person crop width')
+    parser.add_argument('--img_height', default=128, type=int, help='person crop height')
     parser.add_argument('--num_epochs', default=60, type=int, help='training epochs')
     parser.add_argument('--warm_epoch', default=0, type=int, help='the first K epoch that needs warm up')
     parser.add_argument('--lr', default=0.05, type=float, help='learning rate')
@@ -183,20 +184,21 @@ if __name__ == '__main__':
     opt = parser.parse_args()
     print(opt)
 
-    data_dir, name, batchsize, warm_epoch, num_epochs, droprate, circle, num_bottleneck = \
-        opt.data_dir, opt.name, opt.batchsize, opt.warm_epoch, opt.num_epochs, opt.droprate, opt.circle, opt.num_bottleneck
+    data_dir, name, batchsize, warm_epoch, num_epochs, droprate, circle, num_bottleneck, img_height, img_width = \
+        opt.data_dir, opt.name, opt.batchsize, opt.warm_epoch, opt.num_epochs, opt.droprate, opt.circle, \
+        opt.num_bottleneck, opt.img_height, opt.img_width
 
     transform_train_list = [
-        transforms.Resize((128, 64)), # default interpolation is bilinear
+        transforms.Resize((img_height, img_width)), # default interpolation is bilinear
         transforms.Pad(10),
-        transforms.RandomCrop((128, 64)),
+        transforms.RandomCrop((img_height, img_width)),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]
 
     transform_val_list = [
-        transforms.Resize((128, 64)), # default interpolation is bilinear
+        transforms.Resize((img_height, img_width)), # default interpolation is bilinear
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]
@@ -247,7 +249,7 @@ if __name__ == '__main__':
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=40, gamma=0.1)
 
     dir_name = os.path.join('./model', name)
-    if not os.path.isdir(dir_name):
+    if not os.path.exists(dir_name):
         os.mkdir(dir_name)
 
     # save opts

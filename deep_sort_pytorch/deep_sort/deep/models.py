@@ -3,8 +3,23 @@ import torch.nn as nn
 from torch.nn import init
 from torchvision import models
 from torch.autograd import Variable
-
 import torch.nn.functional as F
+
+def select_model(model_name, class_num=751, droprate=0.5, circle=False, num_bottleneck=512):
+    tested_models = ('ResNet50', 'ResNet18', 'SqueezeNet', 'MobileNet', 'Deep')
+
+    assert model_name in tested_models, f'model_name must be one of the following: {tested_models}, found {model_name}'
+    if model_name == 'ResNet50':
+        model = res_net50(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
+    elif model_name == 'ResNet18':
+        model = res_net18(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
+    elif model_name == 'SqueezeNet':
+        model = squeeze_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
+    elif model_name == 'MobileNet':
+        model = mob_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
+    else:
+        model = deep_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
+    return model
 
 
 class BasicBlock(nn.Module):
@@ -263,7 +278,7 @@ python models.py
 if __name__ == '__main__':
     # Here I left a simple forward function.
     # Test the model, before you train it.
-    net = res_net50(751, num_bottleneck=128)
+    net = select_model('ResNet50', num_bottleneck=128)
     # remove last fc from classifier part
     net.classifier.classifier = nn.Sequential()
     print(net)
