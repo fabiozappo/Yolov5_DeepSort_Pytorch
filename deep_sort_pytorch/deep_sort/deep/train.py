@@ -35,12 +35,12 @@ def draw_curve(current_epoch):
     if current_epoch == 0:
         ax0.legend()
         ax1.legend()
-    fig.savefig( os.path.join('./model',name,'train.jpg'))
+    fig.savefig( os.path.join('./model',model_name,'train.jpg'))
 
 
 def save_network(network, epoch_label, num_bottleneck, img_height, img_width, model_name):
     save_filename = 'net_%s.pth' % epoch_label
-    save_path = os.path.join('./model', name, save_filename)
+    save_path = os.path.join('./model', model_name, save_filename)
 
     # add
     to_save_dict = {
@@ -149,7 +149,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
             if phase == 'val':
                 last_model_wts = model.state_dict()
                 if epoch_acc > best_epoch_acc:
-                    save_network(model, 'best', num_bottleneck=num_bottleneck, img_height=img_height, img_width=img_width, model_name=name)
+                    save_network(model, 'best', num_bottleneck=num_bottleneck, img_height=img_height, img_width=img_width, model_name=model_name)
                     best_epoch_acc = epoch_acc
                 draw_curve(epoch)
             else:
@@ -161,16 +161,16 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 
     # load best model weights
     model.load_state_dict(last_model_wts)
-    save_network(model, 'last', num_bottleneck=num_bottleneck, img_height=img_height, img_width=img_width, model_name=name)
+    save_network(model, 'last', num_bottleneck=num_bottleneck, img_height=img_height, img_width=img_width, model_name=model_name)
     return model
 
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Training')
-    parser.add_argument('--name', default='ResNet50', type=str, help='output model name')
+    parser.add_argument('--model_name', default='ResNet50', type=str, help='output model name')
     parser.add_argument('--data_dir', default='../Market/pytorch', type=str, help='training dir path')
-    parser.add_argument('--batchsize', default=32, type=int, help='batchsize')
+    parser.add_argument('--batchsize', default=64, type=int, help='batchsize')
     parser.add_argument('--num_bottleneck', default=512, type=int, help='dim of last fc before classification')
     parser.add_argument('--img_width', default=64, type=int, help='person crop width')
     parser.add_argument('--img_height', default=128, type=int, help='person crop height')
@@ -179,16 +179,17 @@ if __name__ == '__main__':
     parser.add_argument('--lr', default=0.05, type=float, help='learning rate')
     parser.add_argument('--droprate', default=0.5, type=float, help='drop rate')
     parser.add_argument('--circle', action='store_true', help='use Circle loss')
+    parser.add_argument('--dont_finetune', action='store_true', help='use same learning rate for all layers')
 
     opt = parser.parse_args()
     print(opt)
 
-    data_dir, name, batchsize, warm_epoch, num_epochs, droprate, circle, num_bottleneck, img_height, img_width = \
-        opt.data_dir, opt.name, opt.batchsize, opt.warm_epoch, opt.num_epochs, opt.droprate, opt.circle, \
+    data_dir, model_name, batchsize, warm_epoch, num_epochs, droprate, circle, num_bottleneck, img_height, img_width = \
+        opt.data_dir, opt.model_name, opt.batchsize, opt.warm_epoch, opt.num_epochs, opt.droprate, opt.circle, \
         opt.num_bottleneck, opt.img_height, opt.img_width
 
     transform_train_list = [
-        transforms.Resize((img_height, img_width)), # default interpolation is bilinear
+        transforms.Resize((img_height, img_width)),  # default interpolation is bilinear
         transforms.Pad(10),
         transforms.RandomCrop((img_height, img_width)),
         transforms.RandomHorizontalFlip(),
@@ -234,20 +235,23 @@ if __name__ == '__main__':
     ax1 = fig.add_subplot(122, title="top1err")
 
     # Finetuning the convnet
-    model = select_model(name, class_num=len(class_names), droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
+    model = select_model(model_name, class_num=len(class_names), droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
 
-    # Pretrained weights have a low lr
-    ignored_params = list(map(id, model.classifier.parameters()))
-    base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
-    optimizer_ft = optim.SGD([
-             {'params': base_params, 'lr': 0.1*opt.lr},
-             {'params': model.classifier.parameters(), 'lr': opt.lr}
-    ], weight_decay=5e-4, momentum=0.9, nesterov=True)
+    if opt.dont_finetune:
+        optimizer_ft = optim.SGD(model.parameters(), lr=opt.lr, weight_decay=5e-4, momentum=0.9, nesterov=True)
+    else:
+        # Pretrained weights have a low lr
+        ignored_params = list(map(id, model.classifier.parameters()))
+        base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
+        optimizer_ft = optim.SGD([
+                 {'params': base_params, 'lr': 0.1*opt.lr},
+                 {'params': model.classifier.parameters(), 'lr': opt.lr}
+        ], weight_decay=5e-4, momentum=0.9, nesterov=True)
 
     # Decay LR by a factor of 0.1 every 40 epochs
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=40, gamma=0.1)
 
-    dir_name = os.path.join('./model', name)
+    dir_name = os.path.join('./model', model_name)
     if not os.path.exists(dir_name):
         os.mkdir(dir_name)
 

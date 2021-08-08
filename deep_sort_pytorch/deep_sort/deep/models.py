@@ -93,16 +93,13 @@ def make_layers(c_in, c_out, repeat_times, is_downsample=False):
 
 
 class Deep(nn.Module):
-    def __init__(self, num_classes=751, reid=False):
+    def __init__(self):
         super(Deep, self).__init__()
         # 3 128 64
         self.conv = nn.Sequential(
             nn.Conv2d(3, 64, 3, stride=1, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            # nn.Conv2d(32,32,3,stride=1,padding=1),
-            # nn.BatchNorm2d(32),
-            # nn.ReLU(inplace=True),
             nn.MaxPool2d(3, 2, padding=1),
         )
         # 32 64 32
@@ -114,16 +111,6 @@ class Deep(nn.Module):
         # 128 16 8
         self.layer4 = make_layers(256, 512, 2, True)
         # 256 8 4
-        self.avgpool = nn.AvgPool2d((8, 4), 1)
-        # 256 1 1
-        self.reid = reid
-        self.classifier = nn.Sequential(
-            nn.Linear(512, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Linear(256, num_classes),
-        )
 
     def forward(self, x):
         x = self.conv(x)
@@ -131,14 +118,6 @@ class Deep(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        # B x 128
-        if self.reid:
-            x = x.div(x.norm(p=2, dim=1, keepdim=True))
-            return x
-        # classifier
-        x = self.classifier(x)
         return x
 
 
@@ -218,7 +197,7 @@ class res_net18(nn.Module):
         self.model = model_ft
         self.circle = circle
         self.classifier = ClassBlock(512, class_num, droprate, return_f=circle, num_bottleneck=num_bottleneck)
-        del model_ft.classifier
+        del model_ft.fc
 
     def forward(self, x):
         x = self.model.conv1(x)
@@ -263,13 +242,15 @@ class squeeze_net(nn.Module):
     def __init__(self, class_num, droprate=0.5, circle=False, num_bottleneck=512):
         super(squeeze_net, self).__init__()
         model_ft = models.squeezenet1_1(pretrained=True)
+        model_ft.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.model = model_ft
         self.circle = circle
-        self.classifier = ClassBlock(1000, class_num, droprate, return_f=circle, num_bottleneck=num_bottleneck)
+        self.classifier = ClassBlock(512, class_num, droprate, return_f=circle, num_bottleneck=num_bottleneck)
+        del model_ft.classifier
 
     def forward(self, x):
         x = self.model.features(x)
-        x = self.model.classifier(x)
+        x = self.model.avgpool(x)
         x = x.view(x.size(0), x.size(1))
         x = self.classifier(x)
         return x
@@ -279,18 +260,14 @@ class deep_net(nn.Module):
 
     def __init__(self, class_num, droprate=0.5, circle=False, num_bottleneck=512):
         super(deep_net, self).__init__()
-        model_ft = Deep(num_classes=class_num)
+        model_ft = Deep()
         model_ft.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.model = model_ft
         self.circle = circle
         self.classifier = ClassBlock(512, class_num, droprate, return_f=circle, num_bottleneck=num_bottleneck)
 
     def forward(self, x):
-        x = self.model.conv(x)
-        x = self.model.layer1(x)
-        x = self.model.layer2(x)
-        x = self.model.layer3(x)
-        x = self.model.layer4(x)
+        x = self.model(x)
         x = self.model.avgpool(x)
         x = x.view(x.size(0), x.size(1))
         x = self.classifier(x)
@@ -303,10 +280,11 @@ python models.py
 if __name__ == '__main__':
     # Here I left a simple forward function.
     # Test the model, before you train it.
-    net = select_model('ResNet50', num_bottleneck=128)
+    net = select_model('Deep', num_bottleneck=128)
+    print(net)
+    print('Removing: \n', net.classifier.classifier)
     # remove last fc from classifier part
     net.classifier.classifier = nn.Sequential()
-    print(net)
     input = Variable(torch.FloatTensor(8, 3, 128, 64))
     output = net(input)
     print('net output size:')

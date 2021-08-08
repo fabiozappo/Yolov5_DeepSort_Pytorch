@@ -70,7 +70,6 @@ if __name__ == '__main__':
     parser.add_argument('--multi', action='store_true', help='use multiple query')
     parser.add_argument('--augment', action='store_true',
                         help='use horizontal flips and different scales in inference.')
-    parser.add_argument('--trt', action='store_true', help='use trt instead of pytorch inference.')
     opt = parser.parse_args()
     print(opt)
 
