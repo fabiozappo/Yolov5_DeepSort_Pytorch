@@ -22,7 +22,6 @@ from torch.cuda import amp
 from circle_loss import CircleLoss, convert_label_to_similarity
 
 # TODO: trainare e valutare il modello nelle condizioni del nostro caso d'uso, no interpolazione bicubica, minori dimensioni?
-# TODO: fare alle altre reti la stessa modifica fatta a Mobilenet
 # TODO: fare un benchmark di velocità e performance (sul MOT Dataset) di deepsort usando deep vs non usando deep
 
 
@@ -237,6 +236,7 @@ if __name__ == '__main__':
     # Finetuning the convnet
     model = select_model(model_name, class_num=len(class_names), droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
 
+    # original deepsort model is trained from scratch
     if opt.dont_finetune:
         optimizer_ft = optim.SGD(model.parameters(), lr=opt.lr, weight_decay=5e-4, momentum=0.9, nesterov=True)
     else:
