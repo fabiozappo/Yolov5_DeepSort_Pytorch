@@ -2,6 +2,7 @@
 
 from __future__ import print_function, division
 import argparse
+import timeit
 import torch
 import torch.nn as nn
 import torchvision
@@ -117,7 +118,13 @@ if __name__ == '__main__':
         gallery_feature = extract_feature(model, dataloaders['gallery'], ft_dim=num_bottleneck)
         query_feature = extract_feature(model, dataloaders['query'], ft_dim=num_bottleneck)
         if opt.multi:
-            mquery_feature = extract_feature(model, dataloaders['multi-query'])
+            mquery_feature = extract_feature(model, dataloaders['multi-query'], ft_dim=num_bottleneck)
+
+        # get single batch to evaluate inference time
+        num_repeats = 1000
+        x = next(iter(dataloaders['gallery']))[0].to(device).half()
+        inf_time = timeit.timeit(lambda: model(x), number=num_repeats)/num_repeats
+
 
     # Save to Matlab for check
     result = {'gallery_f': gallery_feature.numpy(), 'gallery_label': gallery_label, 'gallery_cam': gallery_cam,
@@ -127,6 +134,8 @@ if __name__ == '__main__':
     print(model_name)
     result = './model/%s/result.txt' % model_name
     os.system('python evaluate_gpu.py | tee -a %s' % result)
+
+    print(f'Inf:{int(inf_time*1000)}ms')
 
     if opt.multi:
         result = {'mquery_f': mquery_feature.numpy(), 'mquery_label': mquery_label, 'mquery_cam': mquery_cam}
