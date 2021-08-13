@@ -12,7 +12,7 @@ def load_model_for_inference(model_path):
         ld['state_dict'], ld['num_bottleneck'], ld['img_height'], ld['img_width'], ld['model_name'], ld['engine_type']
 
     if engine_type == 'pytorch':
-        model = select_model(model_name, num_bottleneck=num_bottleneck)
+        model = select_model(model_name, num_bottleneck=num_bottleneck, load_imagenet_weights=False)
         model.load_state_dict(state_dict)
 
         # Remove the final fc layer and classifier layer
@@ -30,18 +30,18 @@ def load_model_for_inference(model_path):
     return model, num_bottleneck, img_height, img_width, model_name
 
 
-def select_model(model_name, class_num=751, droprate=0.5, circle=False, num_bottleneck=512):
+def select_model(model_name, class_num=751, droprate=0.5, circle=False, num_bottleneck=512, load_imagenet_weights=True):
     tested_models = ('ResNet50', 'ResNet18', 'SqueezeNet', 'MobileNet', 'Deep')
 
     assert model_name in tested_models, f'model_name must be one of the following: {tested_models}, found {model_name}'
     if model_name == 'ResNet50':
-        model = res_net50(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
+        model = res_net50(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck, load_imagenet_weights=load_imagenet_weights)
     elif model_name == 'ResNet18':
-        model = res_net18(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
+        model = res_net18(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck, load_imagenet_weights=load_imagenet_weights)
     elif model_name == 'SqueezeNet':
-        model = squeeze_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
+        model = squeeze_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck, load_imagenet_weights=load_imagenet_weights)
     elif model_name == 'MobileNet':
-        model = mob_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
+        model = mob_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck, load_imagenet_weights=load_imagenet_weights)
     else:
         model = deep_net(class_num=class_num, droprate=droprate, circle=circle, num_bottleneck=num_bottleneck)
     return model
@@ -162,9 +162,9 @@ class ClassBlock(nn.Module):
 # Define the ResNet50-based Model
 class res_net50(nn.Module):
 
-    def __init__(self, class_num, droprate=0.5, circle=False, num_bottleneck=512):
+    def __init__(self, class_num, droprate=0.5, circle=False, num_bottleneck=512, load_imagenet_weights=True):
         super(res_net50, self).__init__()
-        model_ft = models.resnet50(pretrained=True)
+        model_ft = models.resnet50(pretrained=load_imagenet_weights)
         model_ft.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.model = model_ft
         self.circle = circle
@@ -190,9 +190,9 @@ class res_net50(nn.Module):
 # Define the ResNet50-based Model
 class res_net18(nn.Module):
 
-    def __init__(self, class_num, droprate=0.5, circle=False, num_bottleneck=512):
+    def __init__(self, class_num, droprate=0.5, circle=False, num_bottleneck=512, load_imagenet_weights=True):
         super(res_net18, self).__init__()
-        model_ft = models.resnet18(pretrained=True)
+        model_ft = models.resnet18(pretrained=load_imagenet_weights)
         model_ft.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.model = model_ft
         self.circle = circle
@@ -217,9 +217,9 @@ class res_net18(nn.Module):
 # Define the MobilenetV2 based Model
 class mob_net(nn.Module):
 
-    def __init__(self, class_num=751, droprate=0.5, circle=False, num_bottleneck=512):
+    def __init__(self, class_num=751, droprate=0.5, circle=False, num_bottleneck=512, load_imagenet_weights=True):
         super(mob_net, self).__init__()
-        model_ft = models.mobilenet_v2(pretrained=True)
+        model_ft = models.mobilenet_v2(pretrained=load_imagenet_weights)
         # avg pooling to global pooling
         model_ft.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.model = model_ft
@@ -239,9 +239,9 @@ class mob_net(nn.Module):
 # Define the squeeze_net-based Model
 class squeeze_net(nn.Module):
 
-    def __init__(self, class_num, droprate=0.5, circle=False, num_bottleneck=512):
+    def __init__(self, class_num, droprate=0.5, circle=False, num_bottleneck=512, load_imagenet_weights=True):
         super(squeeze_net, self).__init__()
-        model_ft = models.squeezenet1_1(pretrained=True)
+        model_ft = models.squeezenet1_1(pretrained=load_imagenet_weights)
         model_ft.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.model = model_ft
         self.circle = circle
