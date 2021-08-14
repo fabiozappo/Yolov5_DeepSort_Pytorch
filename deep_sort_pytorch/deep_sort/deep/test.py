@@ -83,7 +83,7 @@ if __name__ == '__main__':
 
     # data transformers
     data_transforms = transforms.Compose([
-        transforms.Resize((img_height, img_width)),  # default interpolation is bilinear
+        transforms.Resize((img_height, img_width), interpolation=InterpolationMode.BICUBIC),  # default interpolation is bilinear
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])

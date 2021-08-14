@@ -19,6 +19,7 @@ from models import select_model
 import yaml
 from shutil import copyfile
 from torch.cuda import amp
+from torchvision.transforms import InterpolationMode
 from circle_loss import CircleLoss, convert_label_to_similarity
 
 # TODO: trainare e valutare il modello nelle condizioni del nostro caso d'uso, no interpolazione bicubica, minori dimensioni?
@@ -188,7 +189,7 @@ if __name__ == '__main__':
         opt.num_bottleneck, opt.img_height, opt.img_width
 
     transform_train_list = [
-        transforms.Resize((img_height, img_width)),  # default interpolation is bilinear
+        transforms.Resize((img_height, img_width), interpolation=InterpolationMode.BICUBIC),  # default interpolation is bilinear
         transforms.Pad(10),
         transforms.RandomCrop((img_height, img_width)),
         transforms.RandomHorizontalFlip(),
@@ -197,7 +198,7 @@ if __name__ == '__main__':
     ]
 
     transform_val_list = [
-        transforms.Resize((img_height, img_width)), # default interpolation is bilinear
+        transforms.Resize((img_height, img_width), interpolation=InterpolationMode.BICUBIC), # default interpolation is bilinear
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]
