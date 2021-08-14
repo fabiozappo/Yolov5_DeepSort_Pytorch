@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torchvision
 from torchvision import datasets, models, transforms
+from torchvision.transforms import InterpolationMode
 import os
 import scipy.io
 import yaml
@@ -14,29 +15,16 @@ from models import load_model_for_inference
 from tqdm import tqdm
 
 
-def extract_feature(model, dataloaders, ft_dim, scales=(1, 1.1)):
+def extract_feature(model, dataloaders, ft_dim):
     features = torch.FloatTensor()
 
     for data in tqdm(dataloaders):
         img, label = data
         n, c, h, w = img.size()
 
-        ff = torch.FloatTensor(n, ft_dim).zero_().to(device).half()
         img = img.to(device).half()
 
-        if opt.augment:
-            for i in range(2):
-                if i == 1:
-                    img = img.flip(3)  # flips (2-ud, 3-lr)
-
-                for scale in scales:
-                    if scale != 1:
-                        img = nn.functional.interpolate(img, scale_factor=scale, mode='bicubic', align_corners=False)
-                    outputs = model(img)
-                    ff += outputs
-        else:
-            outputs = model(img)
-            ff += outputs
+        ff = model(img)
 
         # norm feature
         fnorm = torch.norm(ff, p=2, dim=1, keepdim=True)
@@ -69,8 +57,6 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', default='../Market/pytorch', type=str, help='./test_data')
     parser.add_argument('--batchsize', default=64, type=int, help='batchsize')
     parser.add_argument('--multi', action='store_true', help='use multiple query')
-    parser.add_argument('--augment', action='store_true',
-                        help='use horizontal flips and different scales in inference.')
     opt = parser.parse_args()
     print(opt)
 
