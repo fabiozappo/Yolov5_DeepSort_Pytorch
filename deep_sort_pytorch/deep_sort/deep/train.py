@@ -222,7 +222,7 @@ if __name__ == '__main__':
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    inputs, classes = next(iter(dataloaders['train']))
+    # inputs, classes = next(iter(dataloaders['train']))
 
     # loss history
     y_loss = {'train': [], 'val': []}
@@ -245,7 +245,7 @@ if __name__ == '__main__':
         ignored_params = list(map(id, model.classifier.parameters()))
         base_params = filter(lambda p: id(p) not in ignored_params, model.parameters())
         optimizer_ft = optim.SGD([
-                 {'params': base_params, 'lr': 0.1*opt.lr},
+                 {'params': base_params, 'lr': 0.15*opt.lr},
                  {'params': model.classifier.parameters(), 'lr': opt.lr}
         ], weight_decay=5e-4, momentum=0.9, nesterov=True)
 
