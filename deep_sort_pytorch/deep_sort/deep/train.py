@@ -24,6 +24,7 @@ from circle_loss import CircleLoss, convert_label_to_similarity
 
 # TODO: trainare e valutare il modello nelle condizioni del nostro caso d'uso, no interpolazione bicubica, minori dimensioni?
 # TODO: fare un benchmark di velocità e performance (sul MOT Dataset) di deepsort usando deep vs non usando deep
+# bombissima, sull'ultimo punto suggerisco di fare esperimenti con un bottleneck di 256 e dimensioni di input 128, 64
 
 
 def draw_curve(current_epoch):
