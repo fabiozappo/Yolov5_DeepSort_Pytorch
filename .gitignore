@@ -1,5 +1,9 @@
 #
-**/
+inference/
+MOT16_eval/
+yolov5/
+Market-1501-v15.09.15/
+deep_sort_pytorch/deep_sort/deep/model/**/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
